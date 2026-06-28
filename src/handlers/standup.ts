@@ -79,6 +79,13 @@ async function getMemberName(userId: number): Promise<string> {
   return `ID ${userId}`;
 }
 
+async function loadMember(userId: number): Promise<Member | null> {
+  const store = getStore();
+  const raw = await store.get(`member:${userId}`);
+  if (!raw) return null;
+  return JSON.parse(raw) as Member;
+}
+
 function backToStandupMenu() {
   return inlineKeyboard([
     [inlineButton("📊 Run Standup", "standup:pickteam")],
@@ -177,8 +184,14 @@ composer.callbackQuery(/^standup:start:(.+)$/, async (ctx) => {
 
   let sentCount = 0;
   const failures: number[] = [];
+  const optedOut: number[] = [];
 
   for (const memberId of team.memberIds) {
+    const member = await loadMember(memberId);
+    if (member && !member.optedIn) {
+      optedOut.push(memberId);
+      continue;
+    }
     try {
       await ctx.api.sendMessage(
         memberId,
@@ -195,6 +208,10 @@ composer.callbackQuery(/^standup:start:(.+)$/, async (ctx) => {
   let resultText =
     `📊 Standup started for "${team.name}".\n\n` +
     `Sent to ${sentCount}/${team.memberIds.length} members.`;
+
+  if (optedOut.length > 0) {
+    resultText += `\n\nSkipped (not opted in): ${optedOut.length} member(s).`;
+  }
 
   if (failures.length > 0) {
     resultText += `\n\nCould not reach: ${failures.join(", ")} (they may need to DM the bot first).`;
@@ -352,6 +369,19 @@ composer.callbackQuery(/^standup:complete:(.+)$/, async (ctx) => {
 
   const digestText = digestLines.join("\n");
 
+  let channelPosted = false;
+  let channelMessageId: number | undefined;
+  try {
+    const truncated = digestText.length > 4096
+      ? digestText.slice(0, 4093) + "..."
+      : digestText;
+    const sent = await ctx.api.sendMessage(team.channelId, truncated);
+    channelPosted = true;
+    channelMessageId = sent.message_id;
+  } catch {
+    // channel may be inaccessible
+  }
+
   const digest: Digest = {
     id: `digest_${Date.now()}`,
     sessionId: session.id,
@@ -361,6 +391,7 @@ composer.callbackQuery(/^standup:complete:(.+)$/, async (ctx) => {
     blockerHighlights,
     pendingMemberIds,
     pendingMemberNames,
+    channelMessageId,
   };
   await saveDigest(digest);
 
@@ -373,19 +404,10 @@ composer.callbackQuery(/^standup:complete:(.+)$/, async (ctx) => {
     responseCount: session.responses.length,
     blockerCount: blockerHighlights.length,
     status: "complete",
+    channelId: team.channelId,
+    channelMessageId,
   };
   await saveHistoryEntry(history);
-
-  let channelPosted = false;
-  try {
-    const truncated = digestText.length > 4096
-      ? digestText.slice(0, 4093) + "..."
-      : digestText;
-    await ctx.api.sendMessage(team.channelId, truncated);
-    channelPosted = true;
-  } catch {
-    // channel may be inaccessible in test
-  }
 
   let summary = `✅ Standup complete for "${team.name}".\n\n` +
     `Responded: ${session.responses.length}/${team.memberIds.length}\n`;
@@ -396,6 +418,20 @@ composer.callbackQuery(/^standup:complete:(.+)$/, async (ctx) => {
 
   if (channelPosted) {
     summary += `\nChannel digest posted.`;
+  }
+
+  if (team.adminSummaryDm && channelPosted) {
+    try {
+      await ctx.api.sendMessage(
+        ctx.from!.id,
+        `📊 Admin summary for "${team.name}" (${session.date}):\n` +
+          `Responded: ${session.responses.length}/${team.memberIds.length}\n` +
+          `Blockers: ${blockerHighlights.length}\n` +
+          `Pending: ${pendingMemberNames.join(", ") || "none"}`,
+      );
+    } catch {
+      // DM may fail
+    }
   }
 
   await ctx.editMessageText(summary, {
@@ -431,6 +467,9 @@ composer.on("message:text", async (ctx, next) => {
 
     if (!team.memberIds.includes(userId)) continue;
 
+    const member = await loadMember(userId);
+    if (member && !member.optedIn) continue;
+
     if (session.responses.some((r) => r.memberId === userId)) {
       continue;
     }
@@ -453,6 +492,11 @@ async function handleStandupAnswer(ctx: Ctx, sessionId: string | undefined): Pro
   const session = await loadSession(sessionId);
   if (!session || session.status !== "active") {
     await ctx.reply("This standup session is no longer active.");
+    return;
+  }
+
+  if (new Date().toISOString() > session.cutoffTime) {
+    await ctx.reply("The cutoff time for this standup has passed. Responses are no longer being accepted.");
     return;
   }
 

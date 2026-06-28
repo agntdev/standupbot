@@ -9,5 +9,34 @@
         ]
       }
     ]
+  },
+  {
+    "name": "/history command starts the search flow",
+    "steps": [
+      {
+        "send": { "text": "/history" },
+        "expect": [
+          { "method": "sendMessage", "payload": { "text": "Search past standups. Send a keyword to filter by team name, or tap Skip to see all." } }
+        ]
+      },
+      {
+        "send": { "callback": "history:filter:skip" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "Filter by start date? Send a date (YYYY-MM-DD) or tap Skip." } }
+        ]
+      },
+      {
+        "send": { "callback": "history:filter:date:skip" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "Filter by end date? Send a date (YYYY-MM-DD) or tap Skip." } }
+        ]
+      },
+      {
+        "send": { "callback": "history:filter:date:end:skip" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "No standup history yet. Run a standup from the 📊 Standup menu to get started." } }
+        ]
+      }
+    ]
   }
 ]

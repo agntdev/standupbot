@@ -93,7 +93,7 @@ async function finishTeamSave(ctx: Ctx): Promise<void> {
   const creating = ctx.session.creatingTeam;
   const editingTeamId = ctx.session.editingTeamId;
 
-  if (!creating || !creating.name || !creating.channelId || !creating.workingDays || !creating.timezone) {
+  if (!creating || !creating.name || !creating.channelId || !creating.workingDays || !creating.timezone || creating.scheduledHour == null) {
     await ctx.reply("Something went wrong. Please start again from the menu.");
     ctx.session.step = undefined;
     ctx.session.creatingTeam = undefined;
@@ -103,6 +103,10 @@ async function finishTeamSave(ctx: Ctx): Promise<void> {
 
   const questions = creating.questions?.length ? creating.questions : DEFAULT_QUESTIONS;
   const days = formatDays(creating.workingDays);
+  const scheduledHour = creating.scheduledHour;
+  const scheduledMinute = creating.scheduledMinute ?? 0;
+  const cutoffMinutes = creating.cutoffMinutes ?? 120;
+  const adminSummaryDm = creating.adminSummaryDm ?? false;
 
   if (editingTeamId) {
     const existing = await loadTeam(editingTeamId);
@@ -120,6 +124,10 @@ async function finishTeamSave(ctx: Ctx): Promise<void> {
       channelId: creating.channelId,
       workingDays: creating.workingDays,
       timezone: creating.timezone,
+      scheduledHour,
+      scheduledMinute,
+      cutoffMinutes,
+      adminSummaryDm,
       questions,
     };
 
@@ -133,7 +141,9 @@ async function finishTeamSave(ctx: Ctx): Promise<void> {
       `Team "${updated.name}" updated.\n\n` +
         `Channel: ${updated.channelId}\n` +
         `Days: ${days}\n` +
-        `Timezone: ${updated.timezone}`,
+        `Timezone: ${updated.timezone}\n` +
+        `Start: ${String(scheduledHour).padStart(2, "0")}:${String(scheduledMinute).padStart(2, "0")}\n` +
+        `Cutoff: ${cutoffMinutes}min`,
       {
         reply_markup: inlineKeyboard([
           [inlineButton("📋 View Team", `team:view:${updated.id}`)],
@@ -148,6 +158,10 @@ async function finishTeamSave(ctx: Ctx): Promise<void> {
       channelId: creating.channelId,
       workingDays: creating.workingDays,
       timezone: creating.timezone,
+      scheduledHour,
+      scheduledMinute,
+      cutoffMinutes,
+      adminSummaryDm,
       questions,
       memberIds: [],
       ownerId: ctx.from!.id,
@@ -246,6 +260,80 @@ composer.on("message:text", async (ctx, next) => {
       return;
     }
     ctx.session.creatingTeam!.channelId = channelId;
+
+    let channelValid = true;
+    try {
+      await ctx.api.getChat(channelId);
+    } catch {
+      channelValid = false;
+    }
+
+    if (!channelValid) {
+      await ctx.reply(
+        "⚠️ I couldn't access that channel. Please make sure:\n" +
+          "• The bot is added as an admin to the channel\n" +
+          "• The channel ID is correct\n\n" +
+          "You can proceed, but digest posting may fail. Send the channel ID again to retry, or tap Continue:",
+        {
+          reply_markup: inlineKeyboard([
+            [inlineButton("▶️ Continue anyway", "team:channel:continue")],
+            [inlineButton("❌ Cancel", "team:cancel")],
+          ]),
+        },
+      );
+      ctx.session.step = "awaiting_team_channel_retry";
+      return;
+    }
+
+    ctx.session.step = "awaiting_team_days";
+    await ctx.reply(
+      "Which days are working days? Tap the days or send them as numbers (0=Sun, 1=Mon, ... 6=Sat):",
+      {
+        reply_markup: inlineKeyboard([
+          [
+            inlineButton("Mon-Fri", "team:days:1,2,3,4,5"),
+            inlineButton("All week", "team:days:0,1,2,3,4,5,6"),
+          ],
+          [inlineButton("❌ Cancel", "team:cancel")],
+        ]),
+      },
+    );
+    return;
+  }
+
+  if (step === "awaiting_team_channel_retry") {
+    const channelId = parseChannelId(ctx.message.text.trim());
+    if (channelId === null) {
+      await ctx.reply(
+        "Invalid channel ID. It should be a negative number like -1001234567890. Try again or tap Continue.",
+        {
+          reply_markup: inlineKeyboard([
+            [inlineButton("▶️ Continue anyway", "team:channel:continue")],
+            [inlineButton("❌ Cancel", "team:cancel")],
+          ]),
+        },
+      );
+      return;
+    }
+    ctx.session.creatingTeam!.channelId = channelId;
+    let channelValid = true;
+    try {
+      await ctx.api.getChat(channelId);
+    } catch {
+      channelValid = false;
+    }
+    if (!channelValid) {
+      await ctx.reply(
+        "⚠️ Still can't access that channel. Tap Continue to proceed anyway or send a different ID.",
+        {
+          reply_markup: inlineKeyboard([
+            [inlineButton("▶️ Continue anyway", "team:channel:continue")],
+            [inlineButton("❌ Cancel", "team:cancel")],
+          ]),
+        },
+      );
+      return;
+    }
     ctx.session.step = "awaiting_team_days";
     await ctx.reply(
       "Which days are working days? Tap the days or send them as numbers (0=Sun, 1=Mon, ... 6=Sat):",
@@ -304,6 +392,47 @@ composer.on("message:text", async (ctx, next) => {
       return;
     }
     ctx.session.creatingTeam!.timezone = tz;
+    ctx.session.step = "awaiting_team_schedule_time";
+    await ctx.reply(
+      "At what time should the daily standup start? Send in 24h format (e.g., 9:00 or 09:00).",
+      {
+        reply_markup: inlineKeyboard([
+          [
+            inlineButton("9:00 AM", "team:schedule:9:0"),
+            inlineButton("10:00 AM", "team:schedule:10:0"),
+          ],
+          [inlineButton("❌ Cancel", "team:cancel")],
+        ]),
+      },
+    );
+    return;
+  }
+
+  if (step === "awaiting_team_schedule_time") {
+    const text = ctx.message.text.trim();
+    const match = text.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) {
+      await ctx.reply(
+        "Please send a time in 24h format (e.g., 9:00 or 09:00).",
+        {
+          reply_markup: inlineKeyboard([[inlineButton("❌ Cancel", "team:cancel")]]),
+        },
+      );
+      return;
+    }
+    const hour = parseInt(match[1], 10);
+    const minute = parseInt(match[2], 10);
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      await ctx.reply(
+        "Please send a valid time in 24h format (hour 0-23, minute 0-59).",
+        {
+          reply_markup: inlineKeyboard([[inlineButton("❌ Cancel", "team:cancel")]]),
+        },
+      );
+      return;
+    }
+    ctx.session.creatingTeam!.scheduledHour = hour;
+    ctx.session.creatingTeam!.scheduledMinute = minute;
     ctx.session.step = "awaiting_team_questions";
     await ctx.reply(
       "Custom standup questions? Send one question per message, or tap Done to use defaults:\n\n" +
@@ -378,6 +507,23 @@ composer.on("message:text", async (ctx, next) => {
   return next();
 });
 
+composer.callbackQuery("team:channel:continue", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.step = "awaiting_team_days";
+  await ctx.editMessageText(
+    "Which days are working days? Tap the days or send them as numbers (0=Sun, 1=Mon, ... 6=Sat):",
+    {
+      reply_markup: inlineKeyboard([
+        [
+          inlineButton("Mon-Fri", "team:days:1,2,3,4,5"),
+          inlineButton("All week", "team:days:0,1,2,3,4,5,6"),
+        ],
+        [inlineButton("❌ Cancel", "team:cancel")],
+      ]),
+    },
+  );
+});
+
 composer.callbackQuery(/^team:days:(.+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   const days = ctx.match[1].split(",").map(Number);
@@ -405,6 +551,27 @@ composer.callbackQuery(/^team:tz:(.+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   const tz = ctx.match[1];
   ctx.session.creatingTeam!.timezone = tz;
+  ctx.session.step = "awaiting_team_schedule_time";
+  await ctx.editMessageText(
+    "At what time should the daily standup start? Send in 24h format (e.g., 9:00 or 09:00).",
+    {
+      reply_markup: inlineKeyboard([
+        [
+          inlineButton("9:00 AM", "team:schedule:9:0"),
+          inlineButton("10:00 AM", "team:schedule:10:0"),
+        ],
+        [inlineButton("❌ Cancel", "team:cancel")],
+      ]),
+    },
+  );
+});
+
+composer.callbackQuery(/^team:schedule:(\d+):(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const hour = parseInt(ctx.match[1], 10);
+  const minute = parseInt(ctx.match[2], 10);
+  ctx.session.creatingTeam!.scheduledHour = hour;
+  ctx.session.creatingTeam!.scheduledMinute = minute;
   ctx.session.step = "awaiting_team_questions";
   await ctx.editMessageText(
     "Custom standup questions? Send one question per message, or tap Done to use defaults:\n\n" +
@@ -482,16 +649,23 @@ composer.callbackQuery(/^team:view:(.+)$/, async (ctx) => {
     `Questions: ${team.questions.length}\n` +
     `Members (${team.memberIds.length}): ${memberNames.join(", ") || "none"}`;
 
+  const viewKeyboard: ReturnType<typeof inlineButton>[][] = [
+    [inlineButton("➕ Add Member", `team:addmembers:${team.id}`)],
+  ];
+  if (team.memberIds.length > 0) {
+    viewKeyboard.push([inlineButton("➖ Remove Member", `team:remmembers:${team.id}`)]);
+  }
+  viewKeyboard.push(
+    [
+      inlineButton("✏️ Edit", `team:edit:${team.id}`),
+      inlineButton("🗑️ Delete", `team:delete:${team.id}`),
+    ],
+    [inlineButton("⬅️ Back to teams", "team:list")],
+    [inlineButton("⬅️ Main Menu", "menu:main")],
+  );
+
   await ctx.editMessageText(info, {
-    reply_markup: inlineKeyboard([
-      [inlineButton("➕ Add Member", `team:addmembers:${team.id}`)],
-      [
-        inlineButton("✏️ Edit", `team:edit:${team.id}`),
-        inlineButton("🗑️ Delete", `team:delete:${team.id}`),
-      ],
-      [inlineButton("⬅️ Back to teams", "team:list")],
-      [inlineButton("⬅️ Main Menu", "menu:main")],
-    ]),
+    reply_markup: inlineKeyboard(viewKeyboard),
   });
 });
 
@@ -573,6 +747,10 @@ composer.callbackQuery(/^team:edit:(.+)$/, async (ctx) => {
     channelId: team.channelId,
     workingDays: team.workingDays,
     timezone: team.timezone,
+    scheduledHour: team.scheduledHour,
+    scheduledMinute: team.scheduledMinute,
+    cutoffMinutes: team.cutoffMinutes,
+    adminSummaryDm: team.adminSummaryDm,
     questions: team.questions,
   };
 
@@ -635,6 +813,96 @@ composer.callbackQuery(/^team:addmembers:done:(.+)$/, async (ctx) => {
       reply_markup: inlineKeyboard([
         [inlineButton("📋 View Team", `team:view:${teamId}`)],
         [inlineButton("⬅️ Team Menu", "team:menu")],
+      ]),
+    },
+  );
+});
+
+composer.callbackQuery(/^team:remmembers:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const teamId = ctx.match[1];
+  const team = await loadTeam(teamId);
+  if (!team) {
+    await ctx.editMessageText("Team not found.", {
+      reply_markup: inlineKeyboard([[inlineButton("⬅️ Back", "team:menu")]]),
+    });
+    return;
+  }
+
+  if (team.ownerId !== ctx.from!.id) {
+    await ctx.answerCallbackQuery({ text: "Only the team owner can remove members.", show_alert: true });
+    return;
+  }
+
+  if (team.memberIds.length === 0) {
+    await ctx.editMessageText(
+      `Team "${team.name}" has no members to remove.`,
+      {
+        reply_markup: inlineKeyboard([
+          [inlineButton("📋 View Team", `team:view:${teamId}`)],
+          [inlineButton("⬅️ Team Menu", "team:menu")],
+        ]),
+      },
+    );
+    return;
+  }
+
+  const memberRows: ReturnType<typeof inlineButton>[][] = [];
+  for (const mid of team.memberIds) {
+    const m = await loadMember(mid);
+    const label = m?.displayName ?? `ID ${mid}`;
+    memberRows.push([inlineButton(`❌ ${label}`, `team:remmember:${teamId}:${mid}`)]);
+  }
+
+  await ctx.editMessageText(
+    `Select a member to remove from "${team.name}":`,
+    {
+      reply_markup: inlineKeyboard([
+        ...memberRows,
+        [inlineButton("✅ Done", `team:view:${teamId}`)],
+        [inlineButton("❌ Cancel", `team:view:${teamId}`)],
+      ]),
+    },
+  );
+});
+
+composer.callbackQuery(/^team:remmember:(.+):(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const teamId = ctx.match[1];
+  const memberId = parseInt(ctx.match[2], 10);
+  const team = await loadTeam(teamId);
+
+  if (!team) {
+    await ctx.editMessageText("Team not found.");
+    return;
+  }
+
+  if (team.ownerId !== ctx.from!.id) {
+    await ctx.answerCallbackQuery({ text: "Only the team owner can remove members.", show_alert: true });
+    return;
+  }
+
+  const m = await loadMember(memberId);
+  const name = m?.displayName ?? `ID ${memberId}`;
+
+  team.memberIds = team.memberIds.filter((mid) => mid !== memberId);
+  await saveTeam(team);
+
+  const remaining = team.memberIds.length;
+  const remainingRows: ReturnType<typeof inlineButton>[][] = [];
+  for (const mid of team.memberIds) {
+    const mem = await loadMember(mid);
+    const label = mem?.displayName ?? `ID ${mid}`;
+    remainingRows.push([inlineButton(`❌ ${label}`, `team:remmember:${teamId}:${mid}`)]);
+  }
+
+  await ctx.editMessageText(
+    `${name} removed from "${team.name}".\n\n${remaining > 0 ? `Select another to remove:` : `No members remaining.`}`,
+    {
+      reply_markup: inlineKeyboard([
+        ...remainingRows,
+        [inlineButton("✅ Done", `team:view:${teamId}`)],
+        [inlineButton("❌ Cancel", `team:view:${teamId}`)],
       ]),
     },
   );
