@@ -75,7 +75,7 @@ async function getOrCreateMember(telegramId: number, displayName: string): Promi
       telegramId,
       displayName,
       timezone: "UTC",
-      optedIn: false,
+      optedIn: true,
       skipFlags: [],
     };
     await saveMember(member);
@@ -177,6 +177,7 @@ async function finishTeamSave(ctx: Ctx): Promise<void> {
         `Channel: ${team.channelId}\n` +
         `Days: ${days}\n` +
         `Timezone: ${team.timezone}\n` +
+        `Cutoff: ${cutoffMinutes}min\n` +
         `Questions: ${questions.length}`,
       {
         reply_markup: inlineKeyboard([
@@ -433,6 +434,36 @@ composer.on("message:text", async (ctx, next) => {
     }
     ctx.session.creatingTeam!.scheduledHour = hour;
     ctx.session.creatingTeam!.scheduledMinute = minute;
+    ctx.session.step = "awaiting_team_cutoff";
+    await ctx.reply(
+      "How many minutes after the scheduled time is the cutoff? The default is 120 minutes (2 hours). Send a number (e.g. 120), or tap Use Default.",
+      {
+        reply_markup: inlineKeyboard([
+          [inlineButton("✅ Use Default (120)", "team:cutoff:default")],
+          [inlineButton("❌ Cancel", "team:cancel")],
+        ]),
+      },
+    );
+    return;
+  }
+
+  if (step === "awaiting_team_cutoff") {
+    const text = ctx.message.text.trim();
+    const minutes = parseInt(text, 10);
+    if (!isNaN(minutes) && minutes > 0 && minutes <= 1440) {
+      ctx.session.creatingTeam!.cutoffMinutes = minutes;
+    } else {
+      await ctx.reply(
+        "Please send a valid number of minutes between 1 and 1440 (24 hours). Example: 120 for 2 hours.",
+        {
+          reply_markup: inlineKeyboard([
+            [inlineButton("✅ Use Default (120)", "team:cutoff:default")],
+            [inlineButton("❌ Cancel", "team:cancel")],
+          ]),
+        },
+      );
+      return;
+    }
     ctx.session.step = "awaiting_team_questions";
     await ctx.reply(
       "Custom standup questions? Send one question per message, or tap Done to use defaults:\n\n" +
@@ -594,6 +625,21 @@ composer.callbackQuery(/^team:schedule:(\d+):(\d+)$/, async (ctx) => {
   const minute = parseInt(ctx.match[2], 10);
   ctx.session.creatingTeam!.scheduledHour = hour;
   ctx.session.creatingTeam!.scheduledMinute = minute;
+  ctx.session.step = "awaiting_team_cutoff";
+  await ctx.editMessageText(
+    "How many minutes after the scheduled time is the cutoff? The default is 120 minutes (2 hours). Send a number (e.g. 120), or tap Use Default.",
+    {
+      reply_markup: inlineKeyboard([
+        [inlineButton("✅ Use Default (120)", "team:cutoff:default")],
+        [inlineButton("❌ Cancel", "team:cancel")],
+      ]),
+    },
+  );
+});
+
+composer.callbackQuery("team:cutoff:default", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.creatingTeam!.cutoffMinutes = 120;
   ctx.session.step = "awaiting_team_questions";
   await ctx.editMessageText(
     "Custom standup questions? Send one question per message, or tap Done to use defaults:\n\n" +
@@ -681,9 +727,15 @@ composer.callbackQuery(/^team:view:(.+)$/, async (ctx) => {
 
   const days = formatDays(team.workingDays);
   const memberNames: string[] = [];
+  const optInStatuses: string[] = [];
   for (const mid of team.memberIds) {
     const m = await loadMember(mid);
     memberNames.push(m?.displayName ?? `ID ${mid}`);
+    if (m) {
+      optInStatuses.push(m.optedIn ? "✅" : "⭕");
+    } else {
+      optInStatuses.push("⭕");
+    }
   }
 
   const info =
@@ -699,6 +751,17 @@ composer.callbackQuery(/^team:view:(.+)$/, async (ctx) => {
   ];
   if (team.memberIds.length > 0) {
     viewKeyboard.push([inlineButton("➖ Remove Member", `team:remmembers:${team.id}`)]);
+  }
+  if (team.memberIds.length > 0) {
+    const toggleRow: ReturnType<typeof inlineButton>[] = [];
+    for (let i = 0; i < team.memberIds.length; i++) {
+      const mid = team.memberIds[i];
+      const m = await loadMember(mid);
+      const label = m?.displayName ?? `ID ${mid}`;
+      const icon = m?.optedIn ? "✅" : "⭕";
+      toggleRow.push(inlineButton(`${icon} ${label}`, `team:toggleoptin:${team.id}:${mid}`));
+    }
+    viewKeyboard.push(toggleRow);
   }
   viewKeyboard.push(
     [
@@ -951,6 +1014,77 @@ composer.callbackQuery(/^team:remmember:(.+):(\d+)$/, async (ctx) => {
       ]),
     },
   );
+});
+
+composer.callbackQuery(/^team:toggleoptin:(.+):(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const teamId = ctx.match[1];
+  const memberId = parseInt(ctx.match[2], 10);
+  const team = await loadTeam(teamId);
+
+  if (!team) {
+    await ctx.editMessageText("Team not found.");
+    return;
+  }
+
+  if (team.ownerId !== ctx.from!.id) {
+    await ctx.answerCallbackQuery({ text: "Only the team owner can toggle opt-in status.", show_alert: true });
+    return;
+  }
+
+  const member = await loadMember(memberId);
+  if (!member) {
+    await ctx.answerCallbackQuery({ text: "Member not found.", show_alert: true });
+    return;
+  }
+
+  member.optedIn = !member.optedIn;
+  await saveMember(member);
+
+  const mName = member.displayName ?? `ID ${memberId}`;
+  const status = member.optedIn ? "opted in" : "opted out";
+  await ctx.answerCallbackQuery({ text: `${mName} ${status}.` });
+
+  const days = formatDays(team.workingDays);
+  const memberNames: string[] = [];
+  for (const mid of team.memberIds) {
+    const m = await loadMember(mid);
+    memberNames.push(m?.displayName ?? `ID ${mid}`);
+  }
+
+  const info =
+    `Team: ${team.name}\n` +
+    `Channel: ${team.channelId}\n` +
+    `Days: ${days}\n` +
+    `Timezone: ${team.timezone}\n` +
+    `Questions: ${team.questions.length}\n` +
+    `Members (${team.memberIds.length}): ${memberNames.join(", ") || "none"}`;
+
+  const viewKeyboard: ReturnType<typeof inlineButton>[][] = [
+    [inlineButton("➕ Add Member", `team:addmembers:${team.id}`)],
+  ];
+  if (team.memberIds.length > 0) {
+    viewKeyboard.push([inlineButton("➖ Remove Member", `team:remmembers:${team.id}`)]);
+  }
+  if (team.memberIds.length > 0) {
+    const toggleRow: ReturnType<typeof inlineButton>[] = [];
+    for (const mid of team.memberIds) {
+      const m = await loadMember(mid);
+      const label = m?.displayName ?? `ID ${mid}`;
+      const icon = m?.optedIn ? "✅" : "⭕";
+      toggleRow.push(inlineButton(`${icon} ${label}`, `team:toggleoptin:${teamId}:${mid}`));
+    }
+    viewKeyboard.push(toggleRow);
+  }
+  viewKeyboard.push(
+    [inlineButton("✏️ Edit", `team:edit:${team.id}`), inlineButton("🗑️ Delete", `team:delete:${team.id}`)],
+    [inlineButton("⬅️ Back to teams", "team:list")],
+    [inlineButton("⬅️ Main Menu", "menu:main")],
+  );
+
+  await ctx.editMessageText(info, {
+    reply_markup: inlineKeyboard(viewKeyboard),
+  });
 });
 
 export default composer;

@@ -1,0 +1,13 @@
+[
+  {
+    "name": "My Status shows no teams message when not a member",
+    "steps": [
+      {
+        "send": { "callback": "optin:status" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "You're not a member of any teams yet. Ask your team lead to add you." } }
+        ]
+      }
+    ]
+  }
+]
