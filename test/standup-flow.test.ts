@@ -86,6 +86,10 @@ describe("StandupBot integration flow", () => {
     await bot.handleUpdate(callbackUpdate(7, "team:qdone", { userId, chatId }));
     await settle();
 
+    // Step 6.5: admin summary DM toggle — say no
+    await bot.handleUpdate(callbackUpdate(8, "team:admindm:no", { userId, chatId }));
+    await settle();
+
     // Verify team was created
     const store = getStore();
     const teamKeys = await store.keys("team:*");
@@ -97,10 +101,10 @@ describe("StandupBot integration flow", () => {
     expect(team.questions).toEqual(DEFAULT_QUESTIONS);
 
     // Add members
-    bot.handleUpdate(callbackUpdate(8, `team:addmembers:${team.id}`, { userId, chatId }));
+    bot.handleUpdate(callbackUpdate(9, `team:addmembers:${team.id}`, { userId, chatId }));
     await settle();
 
-    await bot.handleUpdate(textUpdate(9, "200", { userId, chatId }));
+    await bot.handleUpdate(textUpdate(10, "200", { userId, chatId }));
     await settle();
 
     // Verify member added
@@ -108,7 +112,7 @@ describe("StandupBot integration flow", () => {
     expect(updatedTeam.memberIds).toContain(200);
 
     // Done adding
-    await bot.handleUpdate(callbackUpdate(10, `team:addmembers:done:${team.id}`, { userId, chatId }));
+    await bot.handleUpdate(callbackUpdate(11, `team:addmembers:done:${team.id}`, { userId, chatId }));
     await settle();
   });
 

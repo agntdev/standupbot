@@ -161,7 +161,8 @@ composer.callbackQuery(/^standup:start:(.+)$/, async (ctx) => {
   const now = new Date();
   const dateStr = now.toISOString().split("T")[0];
   const scheduledTime = now.toISOString();
-  const cutoff = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  const cutoffMinutes = team.cutoffMinutes || 120;
+  const cutoff = new Date(now.getTime() + cutoffMinutes * 60 * 1000);
 
   const session: StandupSession = {
     id: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -197,7 +198,7 @@ composer.callbackQuery(/^standup:start:(.+)$/, async (ctx) => {
         memberId,
         `☀️ Standup time for "${team.name}"!\n\n` +
           questionText +
-          `\n\nReply with your answers (one per line). Cutoff is approximately 2 hours from now.`,
+          `\n\nReply with your answers (one per line). Cutoff is approximately ${cutoffMinutes} minutes from now.`,
       );
       sentCount++;
     } catch {
@@ -395,6 +396,8 @@ composer.callbackQuery(/^standup:complete:(.+)$/, async (ctx) => {
   };
   await saveDigest(digest);
 
+  const respondentNames = session.responses.map((r) => r.memberName);
+
   const history: HistoryEntry = {
     sessionId: session.id,
     teamId: session.teamId,
@@ -402,6 +405,7 @@ composer.callbackQuery(/^standup:complete:(.+)$/, async (ctx) => {
     date: session.date,
     memberCount: team.memberIds.length,
     responseCount: session.responses.length,
+    memberNames: respondentNames,
     blockerCount: blockerHighlights.length,
     status: "complete",
     channelId: team.channelId,
@@ -444,10 +448,13 @@ composer.callbackQuery(/^standup:complete:(.+)$/, async (ctx) => {
 
 composer.on("message:text", async (ctx, next) => {
   const step = ctx.session.step;
+  if (step && step !== "answering_standup") return next();
   if (step === "answering_standup") {
     const sessionId = ctx.session.runningStandupTeamId;
     return handleStandupAnswer(ctx, sessionId);
   }
+
+  if (ctx.chat?.type !== "private") return next();
 
   const store = getStore();
   const activeKeys = await store.keys("active_standup:*");

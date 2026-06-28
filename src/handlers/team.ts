@@ -469,6 +469,28 @@ composer.on("message:text", async (ctx, next) => {
     return;
   }
 
+  if (step === "awaiting_team_admindm") {
+    const text = ctx.message.text.trim().toLowerCase();
+    if (text === "yes" || text === "y") {
+      ctx.session.creatingTeam!.adminSummaryDm = true;
+    } else if (text === "no" || text === "n") {
+      ctx.session.creatingTeam!.adminSummaryDm = false;
+    } else {
+      await ctx.reply(
+        "Please reply Yes or No, or tap a button below.",
+        {
+          reply_markup: inlineKeyboard([
+            [inlineButton("👍 Yes", "team:admindm:yes"), inlineButton("👎 No", "team:admindm:no")],
+            [inlineButton("❌ Cancel", "team:cancel")],
+          ]),
+        },
+      );
+      return;
+    }
+    await finishTeamSave(ctx);
+    return;
+  }
+
   if (step.startsWith("adding_members:")) {
     const teamId = step.slice("adding_members:".length);
     const team = await loadTeam(teamId);
@@ -589,6 +611,29 @@ composer.callbackQuery(/^team:schedule:(\d+):(\d+)$/, async (ctx) => {
 
 composer.callbackQuery("team:qdone", async (ctx) => {
   await ctx.answerCallbackQuery();
+  ctx.session.step = "awaiting_team_admindm";
+  await ctx.editMessageText(
+    "Would you like to receive a private admin summary DM after each standup digest is posted?",
+    {
+      reply_markup: inlineKeyboard([
+        [inlineButton("👍 Yes", "team:admindm:yes"), inlineButton("👎 No", "team:admindm:no")],
+        [inlineButton("❌ Cancel", "team:cancel")],
+      ]),
+    },
+  );
+});
+
+composer.callbackQuery("team:admindm:yes", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!ctx.session.creatingTeam) ctx.session.creatingTeam = {};
+  ctx.session.creatingTeam.adminSummaryDm = true;
+  await finishTeamSave(ctx);
+});
+
+composer.callbackQuery("team:admindm:no", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!ctx.session.creatingTeam) ctx.session.creatingTeam = {};
+  ctx.session.creatingTeam.adminSummaryDm = false;
   await finishTeamSave(ctx);
 });
 

@@ -22,6 +22,12 @@
       {
         "send": { "callback": "history:filter:skip" },
         "expect": [
+          { "method": "editMessageText", "payload": { "text": "Filter by member name? Send a name to search for, or tap Skip." } }
+        ]
+      },
+      {
+        "send": { "callback": "history:filter:member:skip" },
+        "expect": [
           { "method": "editMessageText", "payload": { "text": "Filter by start date? Send a date (YYYY-MM-DD) or tap Skip." } }
         ]
       },

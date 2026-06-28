@@ -53,6 +53,12 @@
       {
         "send": { "callback": "team:qdone" },
         "expect": [
+          { "method": "editMessageText", "payload": { "text": "Would you like to receive a private admin summary DM after each standup digest is posted?" } }
+        ]
+      },
+      {
+        "send": { "callback": "team:admindm:no" },
+        "expect": [
           { "method": "sendMessage", "payload": { "text": "Team \"My Team\" created.\n\nChannel: -1001234567890\nDays: Mon, Tue, Wed, Thu, Fri\nTimezone: UTC\nQuestions: 3" } }
         ]
       }

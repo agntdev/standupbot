@@ -61,6 +61,11 @@ function filterEntries(
       const kw = filters.keyword.toLowerCase();
       if (!e.teamName.toLowerCase().includes(kw)) return false;
     }
+    if (filters.memberName) {
+      const mn = filters.memberName.toLowerCase();
+      const hasMatch = (e.memberNames ?? []).some((n) => n.toLowerCase().includes(mn));
+      if (!hasMatch) return false;
+    }
     return true;
   });
 }
@@ -110,6 +115,22 @@ composer.callbackQuery("history:filter", async (ctx) => {
 
 composer.callbackQuery("history:filter:skip", async (ctx) => {
   await ctx.answerCallbackQuery();
+  if (!ctx.session.searchingHistory) ctx.session.searchingHistory = {};
+  ctx.session.step = "history_search_member_name";
+  await ctx.editMessageText(
+    "Filter by member name? Send a name to search for, or tap Skip.",
+    {
+      reply_markup: inlineKeyboard([
+        [inlineButton("⏭️ Skip", "history:filter:member:skip")],
+        [inlineButton("❌ Cancel", "history:menu")],
+      ]),
+    },
+  );
+});
+
+composer.callbackQuery("history:filter:member:skip", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!ctx.session.searchingHistory) ctx.session.searchingHistory = {};
   ctx.session.step = "history_search_date_from";
   await ctx.editMessageText(
     "Filter by start date? Send a date (YYYY-MM-DD) or tap Skip.",
@@ -155,6 +176,25 @@ composer.on("message:text", async (ctx, next) => {
     const kw = ctx.message.text.trim();
     if (kw) {
       ctx.session.searchingHistory.keyword = kw;
+    }
+    ctx.session.step = "history_search_member_name";
+    await ctx.reply(
+      "Filter by member name? Send a name to search for, or tap Skip.",
+      {
+        reply_markup: inlineKeyboard([
+          [inlineButton("⏭️ Skip", "history:filter:member:skip")],
+          [inlineButton("❌ Cancel", "history:menu")],
+        ]),
+      },
+    );
+    return;
+  }
+
+  if (step === "history_search_member_name") {
+    if (!ctx.session.searchingHistory) ctx.session.searchingHistory = {};
+    const name = ctx.message.text.trim();
+    if (name) {
+      ctx.session.searchingHistory.memberName = name;
     }
     ctx.session.step = "history_search_date_from";
     await ctx.reply(
@@ -262,6 +302,7 @@ async function showHistoryPage(
 
   const filterParts: string[] = [];
   if (filters.keyword) filterParts.push(`keyword: ${filters.keyword}`);
+  if (filters.memberName) filterParts.push(`member: ${filters.memberName}`);
   if (filters.dateFrom || filters.dateTo) {
     filterParts.push(`dates: ${filters.dateFrom ?? "any"} → ${filters.dateTo ?? "any"}`);
   }
