@@ -1,0 +1,55 @@
+[
+  {
+    "name": "Full team creation and listing flow",
+    "steps": [
+      {
+        "send": { "callback": "team:list" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "No teams yet — tap ➕ to create one." } }
+        ]
+      },
+      {
+        "send": { "callback": "team:menu" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "🔧 Team Management — tap an option below." } }
+        ]
+      },
+      {
+        "send": { "callback": "team:create" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "Let's create a team. First, what's the team name?" } }
+        ]
+      },
+      {
+        "send": { "text": "My Team" },
+        "expect": [
+          { "method": "sendMessage", "payload": { "text": "Got it. Now send the Telegram channel ID where standup digests will be posted.\n\nThe ID should be a negative number like -1001234567890. You can get it by forwarding a message from the channel to @getidsbot." } }
+        ]
+      },
+      {
+        "send": { "text": "-1001234567890" },
+        "expect": [
+          { "method": "sendMessage", "payload": { "text": "Which days are working days? Tap the days or send them as numbers (0=Sun, 1=Mon, ... 6=Sat):" } }
+        ]
+      },
+      {
+        "send": { "callback": "team:days:1,2,3,4,5" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "What timezone should the standup use? Examples: UTC, America/New_York, Europe/London, Asia/Tokyo" } }
+        ]
+      },
+      {
+        "send": { "callback": "team:tz:UTC" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "Custom standup questions? Send one question per message, or tap Done to use defaults:\n\n\u2022 What did you work on yesterday?\n\u2022 What are you working on today?\n\u2022 Any blockers or challenges?" } }
+        ]
+      },
+      {
+        "send": { "callback": "team:qdone" },
+        "expect": [
+          { "method": "sendMessage", "payload": { "text": "Team \"My Team\" created.\n\nChannel: -1001234567890\nDays: Mon, Tue, Wed, Thu, Fri\nTimezone: UTC\nQuestions: 3" } }
+        ]
+      }
+    ]
+  }
+]
