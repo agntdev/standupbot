@@ -274,6 +274,8 @@ async function completeStandup(team: Team, session: StandupSession): Promise<voi
   };
   await saveDigest(digest);
 
+  const respondentNames = session.responses.map((r) => r.memberName);
+
   const history: HistoryEntry = {
     sessionId: session.id,
     teamId: session.teamId,
@@ -281,6 +283,7 @@ async function completeStandup(team: Team, session: StandupSession): Promise<voi
     date: session.date,
     memberCount: team.memberIds.length,
     responseCount: session.responses.length,
+    memberNames: respondentNames,
     blockerCount: blockerHighlights.length,
     status: "complete",
     channelId: team.channelId,

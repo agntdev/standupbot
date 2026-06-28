@@ -59,6 +59,7 @@ export interface HistoryEntry {
   date: string;
   memberCount: number;
   responseCount: number;
+  memberNames: string[];
   blockerCount: number;
   status: string;
   channelId?: number;
