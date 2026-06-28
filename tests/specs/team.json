@@ -41,6 +41,12 @@
       {
         "send": { "callback": "team:tz:UTC" },
         "expect": [
+          { "method": "editMessageText", "payload": { "text": "At what time should the daily standup start? Send in 24h format (e.g., 9:00 or 09:00)." } }
+        ]
+      },
+      {
+        "send": { "callback": "team:schedule:9:0" },
+        "expect": [
           { "method": "editMessageText", "payload": { "text": "Custom standup questions? Send one question per message, or tap Done to use defaults:\n\n\u2022 What did you work on yesterday?\n\u2022 What are you working on today?\n\u2022 Any blockers or challenges?" } }
         ]
       },

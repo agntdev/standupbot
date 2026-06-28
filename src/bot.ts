@@ -12,12 +12,19 @@ export interface Session {
     channelId?: number;
     workingDays?: number[];
     timezone?: string;
+    scheduledHour?: number;
+    scheduledMinute?: number;
+    cutoffMinutes?: number;
+    adminSummaryDm?: boolean;
     questions?: string[];
   };
   editingTeamId?: string;
   searchingHistory?: {
     teamId?: string;
     keyword?: string;
+    memberName?: string;
+    dateFrom?: string;
+    dateTo?: string;
   };
   runningStandupTeamId?: string;
 }

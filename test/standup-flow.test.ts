@@ -78,8 +78,12 @@ describe("StandupBot integration flow", () => {
     await bot.handleUpdate(callbackUpdate(5, "team:tz:UTC", { userId, chatId }));
     await settle();
 
+    // Step 5.5: pick scheduled time
+    await bot.handleUpdate(callbackUpdate(6, "team:schedule:9:0", { userId, chatId }));
+    await settle();
+
     // Step 6: use default questions
-    await bot.handleUpdate(callbackUpdate(6, "team:qdone", { userId, chatId }));
+    await bot.handleUpdate(callbackUpdate(7, "team:qdone", { userId, chatId }));
     await settle();
 
     // Verify team was created
@@ -93,10 +97,10 @@ describe("StandupBot integration flow", () => {
     expect(team.questions).toEqual(DEFAULT_QUESTIONS);
 
     // Add members
-    bot.handleUpdate(callbackUpdate(7, `team:addmembers:${team.id}`, { userId, chatId }));
+    bot.handleUpdate(callbackUpdate(8, `team:addmembers:${team.id}`, { userId, chatId }));
     await settle();
 
-    await bot.handleUpdate(textUpdate(8, "200", { userId, chatId }));
+    await bot.handleUpdate(textUpdate(9, "200", { userId, chatId }));
     await settle();
 
     // Verify member added
@@ -104,7 +108,7 @@ describe("StandupBot integration flow", () => {
     expect(updatedTeam.memberIds).toContain(200);
 
     // Done adding
-    await bot.handleUpdate(callbackUpdate(9, `team:addmembers:done:${team.id}`, { userId, chatId }));
+    await bot.handleUpdate(callbackUpdate(10, `team:addmembers:done:${team.id}`, { userId, chatId }));
     await settle();
   });
 

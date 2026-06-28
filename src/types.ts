@@ -4,6 +4,10 @@ export interface Team {
   channelId: number;
   workingDays: number[];
   timezone: string;
+  scheduledHour: number;
+  scheduledMinute: number;
+  cutoffMinutes: number;
+  adminSummaryDm: boolean;
   questions: string[];
   memberIds: number[];
   ownerId: number;
@@ -45,6 +49,7 @@ export interface Digest {
   blockerHighlights: string[];
   pendingMemberIds: number[];
   pendingMemberNames: string[];
+  channelMessageId?: number;
 }
 
 export interface HistoryEntry {
@@ -56,6 +61,8 @@ export interface HistoryEntry {
   responseCount: number;
   blockerCount: number;
   status: string;
+  channelId?: number;
+  channelMessageId?: number;
 }
 
 export const DEFAULT_QUESTIONS = [
@@ -67,3 +74,7 @@ export const DEFAULT_QUESTIONS = [
 export const DEFAULT_WORKING_DAYS = [1, 2, 3, 4, 5];
 
 export const DEFAULT_TIMEZONE = "UTC";
+
+export const DEFAULT_SCHEDULED_HOUR = 9;
+export const DEFAULT_SCHEDULED_MINUTE = 0;
+export const DEFAULT_CUTOFF_MINUTES = 2 * 60;
