@@ -1,9 +1,20 @@
 [
   {
-    "name": "History shows empty state when no standups have run",
+    "name": "History via history:menu shows empty state when no standups have run",
     "steps": [
       {
         "send": { "callback": "history:menu" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "text": "No standup history yet. Run a standup from the 📊 Standup menu to get started." } }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "History via history:view shows empty state when no standups have run",
+    "steps": [
+      {
+        "send": { "callback": "history:view" },
         "expect": [
           { "method": "editMessageText", "payload": { "text": "No standup history yet. Run a standup from the 📊 Standup menu to get started." } }
         ]

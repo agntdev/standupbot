@@ -11,7 +11,7 @@ import {
 import { getStore } from "../store.js";
 import type { HistoryEntry, Team, Digest } from "../types.js";
 
-registerMainMenuItem({ label: "📋 History", data: "history:menu", order: 30 });
+registerMainMenuItem({ label: "📋 History", data: "history:view", order: 30 });
 
 const composer = new Composer<Ctx>();
 
@@ -94,10 +94,19 @@ composer.command("history", async (ctx) => {
   );
 });
 
-composer.callbackQuery("history:menu", async (ctx) => {
-  await ctx.answerCallbackQuery();
+async function showHistoryDefault(ctx: Ctx) {
   const entries = await loadHistoryEntries();
   await showHistoryPage(ctx, entries, {}, 0);
+}
+
+composer.callbackQuery("history:menu", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await showHistoryDefault(ctx);
+});
+
+composer.callbackQuery("history:view", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await showHistoryDefault(ctx);
 });
 
 composer.callbackQuery("history:filter", async (ctx) => {
@@ -324,7 +333,7 @@ async function showHistoryPage(
     lines.push(`  Team: ${entry.teamName}`);
     lines.push(`  Responses: ${entry.responseCount}/${entry.memberCount}${entry.blockerCount > 0 ? "  ⚠️" + entry.blockerCount + " blockers" : ""}`);
     if (permalink) {
-      lines.push(`  [View in channel](${permalink})`);
+      lines.push(`  ${permalink}`);
     }
     lines.push("");
   }
