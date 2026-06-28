@@ -398,6 +398,16 @@ composer.callbackQuery(/^standup:complete:(.+)$/, async (ctx) => {
 
   const respondentNames = session.responses.map((r) => r.memberName);
 
+  const allTextParts: string[] = [];
+  for (const r of session.responses) {
+    for (let i = 0; i < r.answers.length; i++) {
+      allTextParts.push(`${r.memberName}: ${r.answers[i]}`);
+    }
+  }
+  if (blockerHighlights.length > 0) {
+    allTextParts.push("blockers: " + blockerHighlights.join("; "));
+  }
+
   const history: HistoryEntry = {
     sessionId: session.id,
     teamId: session.teamId,
@@ -410,6 +420,7 @@ composer.callbackQuery(/^standup:complete:(.+)$/, async (ctx) => {
     status: "complete",
     channelId: team.channelId,
     channelMessageId,
+    allText: allTextParts.join(" | "),
   };
   await saveHistoryEntry(history);
 
@@ -463,6 +474,7 @@ composer.on("message:text", async (ctx, next) => {
   const userId = ctx.from?.id;
   if (!userId) return next();
 
+  const matchingSessionIds: string[] = [];
   for (const key of activeKeys) {
     const sessionId = await store.get(key);
     if (!sessionId) continue;
@@ -481,10 +493,28 @@ composer.on("message:text", async (ctx, next) => {
       continue;
     }
 
-    return handleStandupAnswer(ctx, sessionId);
+    matchingSessionIds.push(sessionId);
   }
 
-  return next();
+  if (matchingSessionIds.length === 0) return next();
+
+  const processed: string[] = [];
+  for (const sid of matchingSessionIds) {
+    const saved = await processStandupAnswerSilent(ctx, sid);
+    if (saved) processed.push(sid);
+  }
+
+  if (processed.length === 0) return next();
+
+  if (processed.length === 1) {
+    const session = await loadSession(processed[0]);
+    const team = session ? await loadTeam(session.teamId) : null;
+    await ctx.reply(`✅ Your standup for "${team?.name ?? "your team"}" has been submitted. Thanks!`);
+  } else {
+    await ctx.reply(`✅ Your standup has been submitted for ${processed.length} teams. Thanks!`);
+  }
+  ctx.session.step = undefined;
+  ctx.session.runningStandupTeamId = undefined;
 });
 
 async function handleStandupAnswer(ctx: Ctx, sessionId: string | undefined): Promise<void> {
@@ -539,6 +569,41 @@ async function handleStandupAnswer(ctx: Ctx, sessionId: string | undefined): Pro
   await ctx.reply(
     "✅ Your standup has been submitted. Thanks!",
   );
+}
+
+async function processStandupAnswerSilent(ctx: Ctx, sessionId: string): Promise<boolean> {
+  const userId = ctx.from?.id;
+  if (!userId) return false;
+
+  const message = ctx.message;
+  if (!message || !("text" in message) || !message.text) return false;
+
+  const session = await loadSession(sessionId);
+  if (!session || session.status !== "active") return false;
+
+  if (new Date().toISOString() > session.cutoffTime) return false;
+
+  if (session.responses.some((r) => r.memberId === userId)) return false;
+
+  const text = message.text.trim();
+  const answers = text.split("\n").map((l) => l.replace(/^\d+[.)]\s*/, "").trim()).filter(Boolean);
+
+  if (answers.length === 0) return false;
+
+  const memberName = await getMemberName(userId);
+  const userName = memberName !== `ID ${userId}` ? memberName : (ctx.from?.first_name ?? `ID ${userId}`);
+
+  const response: StandupResponse = {
+    memberId: userId,
+    memberName: userName,
+    answers,
+    submittedAt: new Date().toISOString(),
+  };
+
+  session.responses.push(response);
+  await saveSession(session);
+
+  return true;
 }
 
 export default composer;

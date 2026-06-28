@@ -64,6 +64,7 @@ export interface HistoryEntry {
   status: string;
   channelId?: number;
   channelMessageId?: number;
+  allText?: string;
 }
 
 export const DEFAULT_QUESTIONS = [

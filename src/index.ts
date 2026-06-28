@@ -11,7 +11,9 @@ async function main() {
   const bot = await buildBot(token);
   // Publish the "/" command list to Telegram (discoverability). A button-first
   // bot exposes only /start + /help; everything else is reached via menu buttons.
-  await setDefaultCommands(bot);
+  await setDefaultCommands(bot, [
+    { command: "history", description: "Search past standups" },
+  ]);
   // Start the automated standup cycle scheduler.
   startScheduler(bot.api);
   bot.start();

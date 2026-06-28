@@ -59,7 +59,9 @@ function filterEntries(
     if (filters.dateTo && e.date > filters.dateTo) return false;
     if (filters.keyword) {
       const kw = filters.keyword.toLowerCase();
-      if (!e.teamName.toLowerCase().includes(kw)) return false;
+      const teamMatch = e.teamName.toLowerCase().includes(kw);
+      const textMatch = (e.allText ?? "").toLowerCase().includes(kw);
+      if (!teamMatch && !textMatch) return false;
     }
     if (filters.memberName) {
       const mn = filters.memberName.toLowerCase();

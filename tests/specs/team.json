@@ -47,6 +47,12 @@
       {
         "send": { "callback": "team:schedule:9:0" },
         "expect": [
+          { "method": "editMessageText", "payload": { "text": "How many minutes after the scheduled time is the cutoff? The default is 120 minutes (2 hours). Send a number (e.g. 120), or tap Use Default." } }
+        ]
+      },
+      {
+        "send": { "callback": "team:cutoff:default" },
+        "expect": [
           { "method": "editMessageText", "payload": { "text": "Custom standup questions? Send one question per message, or tap Done to use defaults:\n\n\u2022 What did you work on yesterday?\n\u2022 What are you working on today?\n\u2022 Any blockers or challenges?" } }
         ]
       },
@@ -59,7 +65,7 @@
       {
         "send": { "callback": "team:admindm:no" },
         "expect": [
-          { "method": "sendMessage", "payload": { "text": "Team \"My Team\" created.\n\nChannel: -1001234567890\nDays: Mon, Tue, Wed, Thu, Fri\nTimezone: UTC\nQuestions: 3" } }
+          { "method": "sendMessage", "payload": { "text": "Team \"My Team\" created.\n\nChannel: -1001234567890\nDays: Mon, Tue, Wed, Thu, Fri\nTimezone: UTC\nCutoff: 120min\nQuestions: 3" } }
         ]
       }
     ]

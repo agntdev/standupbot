@@ -276,6 +276,16 @@ async function completeStandup(team: Team, session: StandupSession): Promise<voi
 
   const respondentNames = session.responses.map((r) => r.memberName);
 
+  const allTextParts: string[] = [];
+  for (const r of session.responses) {
+    for (let i = 0; i < r.answers.length; i++) {
+      allTextParts.push(`${r.memberName}: ${r.answers[i]}`);
+    }
+  }
+  if (blockerHighlights.length > 0) {
+    allTextParts.push("blockers: " + blockerHighlights.join("; "));
+  }
+
   const history: HistoryEntry = {
     sessionId: session.id,
     teamId: session.teamId,
@@ -288,6 +298,7 @@ async function completeStandup(team: Team, session: StandupSession): Promise<voi
     status: "complete",
     channelId: team.channelId,
     channelMessageId,
+    allText: allTextParts.join(" | "),
   };
   await saveHistoryEntry(history);
 
